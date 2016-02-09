@@ -27,7 +27,7 @@
 using namespace boost;
 using namespace std;
 
-extern shared_ptr<scribeHandler> g_Handler;
+extern boost::shared_ptr<scribeHandler> g_Handler;
 
 StoreConf::StoreConf() {
 }
@@ -141,14 +141,14 @@ bool StoreConf::getString(const string& stringName,
     }
   }
   // if we didn't find any.  then try g_Handler's config
-  if (!found) {
+  /*if (!found) {
     const StoreConf& gconf = g_Handler->getConfig();
     string_map_t::const_iterator iter = gconf.values.find(inheritedName);
     if (iter != gconf.values.end()) {
       _return = iter->second;
       found = true;
     }
-  }
+  }*/
   return found;
 }
 

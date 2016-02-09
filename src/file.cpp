@@ -21,7 +21,7 @@
 
 #include "common.h"
 #include "file.h"
-#include "HdfsFile.h"
+//#include "HdfsFile.h"
 
 #define INITIAL_BUFFER_SIZE (64 * 1024)
 #define LARGE_BUFFER_SIZE (16 * INITIAL_BUFFER_SIZE) /* arbitrarily chosen */
@@ -34,17 +34,15 @@ boost::shared_ptr<FileInterface> FileInterface::createFileInterface(const std::s
                                                                     const std::string& name,
                                                                     bool framed) {
   if (0 == type.compare("std")) {
-    return shared_ptr<FileInterface>(new StdFile(name, framed));
-  } else if (0 == type.compare("hdfs")) {
-    return shared_ptr<FileInterface>(new HdfsFile(name));
+    return boost::shared_ptr<FileInterface>(new StdFile(name, framed));
   } else {
-    return shared_ptr<FileInterface>();
+    return boost::shared_ptr<FileInterface>();
   }
 }
 
 std::vector<std::string> FileInterface::list(const std::string& path, const std::string &fsType) {
   std::vector<std::string> files;
-  shared_ptr<FileInterface> concrete_file = createFileInterface(fsType, path);
+  boost::shared_ptr<FileInterface> concrete_file = createFileInterface(fsType, path);
   if (concrete_file) {
     concrete_file->listImpl(path, files);
   }

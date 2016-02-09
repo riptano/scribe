@@ -175,7 +175,7 @@ void StoreQueue::open() {
   }
 }
 
-shared_ptr<Store> StoreQueue::copyStore(const std::string &category) {
+boost::shared_ptr<Store> StoreQueue::copyStore(const std::string &category) {
   return store->copy(category);
 }
 
@@ -306,7 +306,7 @@ void StoreQueue::threadMember() {
   store->close();
 }
 
-void StoreQueue::processFailedMessages(shared_ptr<logentry_vector_t> messages) {
+void StoreQueue::processFailedMessages(boost::shared_ptr<logentry_vector_t> messages) {
   // If the store was not able to process these messages, we will either
   // requeue them or give up depending on the value of mustSucceed
 
@@ -316,12 +316,12 @@ void StoreQueue::processFailedMessages(shared_ptr<logentry_vector_t> messages) {
 
     LOG_OPER("[%s] WARNING: Re-queueing %lu messages!",
              categoryHandled.c_str(), messages->size());
-    g_Handler->incCounter(categoryHandled, "requeue", messages->size());
+    //g_Handler->incCounter(categoryHandled, "requeue", messages->size());
   } else {
     // record messages as being lost
     LOG_OPER("[%s] WARNING: Lost %lu messages!",
              categoryHandled.c_str(), messages->size());
-    g_Handler->incCounter(categoryHandled, "lost", messages->size());
+    //g_Handler->incCounter(categoryHandled, "lost", messages->size());
   }
 }
 

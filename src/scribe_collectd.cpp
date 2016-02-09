@@ -22,7 +22,7 @@
 // @author Anthony Giardullo
 
 #include "common.h"
-#include "scribe_server.h"
+#include "scribe_collectd.h"
 
 using namespace apache::thrift::concurrency;
 
@@ -34,7 +34,6 @@ using namespace std;
 
 using boost::shared_ptr;
 
-boost::shared_ptr<scribeHandler> g_Handler;
 
 #define DEFAULT_CHECK_PERIOD       5
 #define DEFAULT_MAX_MSG_PER_SECOND 0
@@ -45,90 +44,11 @@ boost::shared_ptr<scribeHandler> g_Handler;
 static string overall_category = "scribe_overall";
 static string log_separator = ":";
 
-void print_usage(const char* program_name) {
-  cout << "Usage: " << program_name << " [-p port] [-c config_file]" << endl;
-}
-
-void scribeHandler::incCounter(string category, string counter) {
-  incCounter(category, counter, 1);
-}
-
-void scribeHandler::incCounter(string category, string counter, long amount) {
-  incrementCounter(category + log_separator + counter, amount);
-  incrementCounter(overall_category + log_separator + counter, amount);
-}
-
-void scribeHandler::incCounter(string counter) {
-  incCounter(counter, 1);
-}
-
-void scribeHandler::incCounter(string counter, long amount) {
-  incrementCounter(overall_category + log_separator + counter, amount);
-}
-
-int main(int argc, char **argv) {
-
-  try {
-    /* Increase number of fds */
-    struct rlimit r_fd = {65535,65535};
-    if (-1 == setrlimit(RLIMIT_NOFILE, &r_fd)) {
-      LOG_OPER("setrlimit error (setting max fd size)");
-    }
-
-    int next_option;
-    const char* const short_options = "hp:c:";
-    const struct option long_options[] = {
-      { "help",   0, NULL, 'h' },
-      { "port",   0, NULL, 'p' },
-      { "config", 0, NULL, 'c' },
-      { NULL,     0, NULL, 'o' },
-    };
-
-    unsigned long int port = 0;  // this can also be specified in the conf file, which overrides the command line
-    std::string config_file;
-    while (0 < (next_option = getopt_long(argc, argv, short_options, long_options, NULL))) {
-      switch (next_option) {
-      default:
-      case 'h':
-        print_usage(argv[0]);
-        exit(0);
-      case 'c':
-        config_file = optarg;
-        break;
-      case 'p':
-        port = strtoul(optarg, NULL, 0);
-        break;
-      }
-    }
-
-    // assume a non-option arg is a config file name
-    if (optind < argc && config_file.empty()) {
-      config_file = argv[optind];
-    }
-
-    // seed random number generation with something reasonably unique
-    srand(time(NULL) ^ getpid());
-
-    g_Handler = boost::shared_ptr<scribeHandler>(new scribeHandler(port, config_file));
-    g_Handler->initialize();
-
-    scribe::startServer(); // never returns
-
-  } catch(const std::exception& e) {
-    LOG_OPER("Exception in main: %s", e.what());
-  }
-
-  LOG_OPER("scribe server exiting");
-  return 0;
-}
-
-scribeHandler::scribeHandler(unsigned long int server_port, const std::string& config_file)
-  : FacebookBase("Scribe"),
-    port(server_port),
-    numThriftServerThreads(DEFAULT_SERVER_THREADS),
+scribeCollectd::scribeCollectd()
+  :
+    port(9999),
     checkPeriod(DEFAULT_CHECK_PERIOD),
-    configFilename(config_file),
-    status(STARTING),
+    configFilename("/tmp/config.conf"),
     statusDetails("initial state"),
     numMsgLastSecond(0),
     maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
@@ -139,93 +59,17 @@ scribeHandler::scribeHandler(unsigned long int server_port, const std::string& c
   scribeHandlerLock = scribe::concurrency::createReadWriteMutex();
 }
 
-scribeHandler::~scribeHandler() {
+scribeCollectd::~scribeCollectd() {
   deleteCategoryMap(categories);
   deleteCategoryMap(category_prefixes);
 }
 
-// Returns the handler status, but overwrites it with WARNING if it's
-// ALIVE and at least one store has a nonempty status.
-fb_status scribeHandler::getStatus() {
-  RWGuard monitor(*scribeHandlerLock);
-  Guard status_monitor(statusLock);
 
-  fb_status return_status(status);
-  if (status == ALIVE) {
-    for (category_map_t::iterator cat_iter = categories.begin();
-        cat_iter != categories.end();
-        ++cat_iter) {
-      for (store_list_t::iterator store_iter = cat_iter->second->begin();
-           store_iter != cat_iter->second->end();
-           ++store_iter) {
-        if (!(*store_iter)->getStatus().empty()) {
-          return_status = WARNING;
-          return return_status;
-        }
-      } // for each store
-    } // for each category
-  } // if we don't have an interesting top level status
-  return return_status;
-}
 
-void scribeHandler::setStatus(fb_status new_status) {
-  LOG_OPER("STATUS: %s", statusAsString(new_status));
-  Guard status_monitor(statusLock);
-  status = new_status;
-}
-
-// Returns the handler status details if non-empty,
-// otherwise the first non-empty store status found
-void scribeHandler::getStatusDetails(std::string& _return) {
-  RWGuard monitor(*scribeHandlerLock);
-  Guard status_monitor(statusLock);
-
-  _return = statusDetails;
-  if (_return.empty()) {
-    for (category_map_t::iterator cat_iter = categories.begin();
-        cat_iter != categories.end();
-        ++cat_iter) {
-      for (store_list_t::iterator store_iter = cat_iter->second->begin();
-          store_iter != cat_iter->second->end();
-          ++store_iter) {
-
-        if (!(_return = (*store_iter)->getStatus()).empty()) {
-          return;
-        }
-      } // for each store
-    } // for each category
-  } // if we don't have an interesting top level status
-  return;
-}
-
-void scribeHandler::setStatusDetails(const string& new_status_details) {
-  LOG_OPER("STATUS: %s", new_status_details.c_str());
-  Guard status_monitor(statusLock);
-  statusDetails = new_status_details;
-}
-
-const char* scribeHandler::statusAsString(fb_status status) {
-  switch (status) {
-  case DEAD:
-    return "DEAD";
-  case STARTING:
-    return "STARTING";
-  case ALIVE:
-    return "ALIVE";
-  case STOPPING:
-    return "STOPPING";
-  case STOPPED:
-    return "STOPPED";
-  case WARNING:
-    return "WARNING";
-  default:
-    return "unknown status code";
-  }
-}
 
 
 // Should be called while holding a writeLock on scribeHandlerLock
-bool scribeHandler::createCategoryFromModel(
+bool scribeCollectd::createCategoryFromModel(
   const string &category, const boost::shared_ptr<StoreQueue> &model) {
 
   // Make sure the category name is sane.
@@ -273,10 +117,9 @@ bool scribeHandler::createCategoryFromModel(
 
 
 // Check if we need to deny this request due to throttling
-bool scribeHandler::throttleRequest(const vector<LogEntry>&  messages) {
+bool scribeCollectd::throttleRequest(const vector<LogEntry>&  messages) {
   // Check if we need to rate limit
   if (throttleDeny(messages.size())) {
-    incCounter("denied for rate");
     return true;
   }
 
@@ -304,7 +147,6 @@ bool scribeHandler::throttleRequest(const vector<LogEntry>&  messages) {
       } else {
         unsigned long long size = (*store_iter)->getSize();
         if (size > maxQueueSize) {
-          incCounter((*store_iter)->getCategoryHandled(), "denied for queue size");
           return true;
         }
       }
@@ -315,7 +157,7 @@ bool scribeHandler::throttleRequest(const vector<LogEntry>&  messages) {
 }
 
 // Should be called while holding a writeLock on scribeHandlerLock
-boost::shared_ptr<store_list_t> scribeHandler::createNewCategory(
+boost::shared_ptr<store_list_t> scribeCollectd::createNewCategory(
   const string& category) {
 
   boost::shared_ptr<store_list_t> store_list;
@@ -366,7 +208,7 @@ boost::shared_ptr<store_list_t> scribeHandler::createNewCategory(
 }
 
 // Add this message to every store in list
-void scribeHandler::addMessage(
+void scribeCollectd::addMessage(
   const LogEntry& entry,
   const boost::shared_ptr<store_list_t>& store_list) {
 
@@ -384,22 +226,15 @@ void scribeHandler::addMessage(
     (*store_iter)->addMessage(ptr);
   }
 
-  if (numstores) {
-    incCounter(entry.category, "received good");
-  } else {
-    incCounter(entry.category, "received bad");
-  }
+
 }
 
 
-ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
+ResultCode scribeCollectd::Log(const vector<LogEntry>&  messages) {
   ResultCode result = TRY_LATER;
 
   scribeHandlerLock->acquireRead();
-  if(status == STOPPING) {
-    result = TRY_LATER;
-    goto end;
-  }
+
 
   if (throttleRequest(messages)) {
     result = TRY_LATER;
@@ -412,7 +247,6 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
 
     // disallow blank category from the start
     if ((*msg_iter).category.empty()) {
-      incCounter("received blank category");
       continue;
     }
 
@@ -448,7 +282,6 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
 
     if (store_list == NULL) {
       LOG_OPER("log entry has invalid category <%s>", category.c_str());
-      incCounter(category, "received bad");
 
       continue;
     }
@@ -466,7 +299,7 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
 
 // Returns true if overloaded.
 // Allows a fixed number of messages per second.
-bool scribeHandler::throttleDeny(int num_messages) {
+bool scribeCollectd::throttleDeny(int num_messages) {
   time_t now;
   if (0 == maxMsgPerSecond)
     return false;
@@ -494,8 +327,7 @@ bool scribeHandler::throttleDeny(int num_messages) {
   }
 }
 
-void scribeHandler::stopStores() {
-  setStatus(STOPPING);
+void scribeCollectd::stopStores() {
   boost::shared_ptr<store_list_t> store_list;
   for (store_list_t::iterator store_iter = defaultStores.begin();
       store_iter != defaultStores.end(); ++store_iter) {
@@ -509,15 +341,14 @@ void scribeHandler::stopStores() {
 
 }
 
-void scribeHandler::shutdown() {
+void scribeCollectd::shutdown() {
   RWGuard monitor(*scribeHandlerLock, true);
   stopStores();
   // calling stop to allow thrift to clean up client states and exit
-  server->stop();
   scribe::stopServer();
 }
 
-void scribeHandler::reinitialize() {
+void scribeCollectd::reinitialize() {
   RWGuard monitor(*scribeHandlerLock, true);
 
   // reinitialize() will re-read the config file and re-configure the stores.
@@ -528,11 +359,9 @@ void scribeHandler::reinitialize() {
   initialize();
 }
 
-void scribeHandler::initialize() {
+void scribeCollectd::initialize() {
 
   // This clears out the error state, grep for setStatus below for details
-  setStatus(STARTING);
-  setStatusDetails("configuring");
 
   bool perfect_config = true;
   bool enough_config_to_run = true;
@@ -586,17 +415,6 @@ void scribeHandler::initialize() {
       throw runtime_error("No port number configured");
     }
 
-    // check if config sets the size to use for the ThreadManager
-    unsigned long int num_threads;
-    if (config.getUnsigned("num_thrift_server_threads", num_threads)) {
-      numThriftServerThreads = (size_t) num_threads;
-
-      if (numThriftServerThreads <= 0) {
-        LOG_OPER("invalid value for num_thrift_server_threads: %lu",
-                 num_threads);
-        throw runtime_error("invalid value for num_thrift_server_threads");
-      }
-    }
 
 
     // Build a new map of stores, and move stores from the old map as
@@ -618,7 +436,6 @@ void scribeHandler::initialize() {
   } catch(const std::exception& e) {
     string errormsg("Bad config - exception: ");
     errormsg += e.what();
-    setStatusDetails(errormsg);
     perfect_config = false;
     enough_config_to_run = false;
   }
@@ -626,7 +443,6 @@ void scribeHandler::initialize() {
   if (numstores) {
     LOG_OPER("configured <%d> stores", numstores);
   } else {
-    setStatusDetails("No stores configured successfully");
     perfect_config = false;
     enough_config_to_run = false;
   }
@@ -638,19 +454,11 @@ void scribeHandler::initialize() {
     deleteCategoryMap(category_prefixes);
   }
 
-
-  if (!perfect_config || !enough_config_to_run) {
-    // perfect should be a subset of enough, but just in case
-    setStatus(WARNING); // status details should have been set above
-  } else {
-    setStatusDetails("");
-    setStatus(ALIVE);
-  }
 }
 
 
 // Configures the store specified by the store configuration. Returns false if failed.
-bool scribeHandler::configureStore(pStoreConf store_conf, int *numstores) {
+bool scribeCollectd::configureStore(pStoreConf store_conf, int *numstores) {
   string category;
   boost::shared_ptr<StoreQueue> pstore;
   vector<string> category_list;
@@ -680,7 +488,6 @@ bool scribeHandler::configureStore(pStoreConf store_conf, int *numstores) {
   }
 
   if (category_list.size() == 0) {
-    setStatusDetails("Bad config - store with no category");
     return false;
   }
   else if (single_category) {
@@ -701,7 +508,6 @@ bool scribeHandler::configureStore(pStoreConf store_conf, int *numstores) {
         type.empty()) {
       string errormsg("Bad config - no type for store with category: ");
       errormsg += categories;
-      setStatusDetails(errormsg);
       return false;
     }
 
@@ -711,14 +517,13 @@ bool scribeHandler::configureStore(pStoreConf store_conf, int *numstores) {
     if (model == NULL) {
       string errormsg("Bad config - could not create store for category: ");
       errormsg += categories;
-      setStatusDetails(errormsg);
       return false;
     }
 
     // create a store for each category
     vector<string>::iterator iter;
     for (iter = category_list.begin(); iter < category_list.end(); iter++) {
-       boost::shared_ptr<StoreQueue> result =
+      boost::shared_ptr<StoreQueue> result =
          configureStoreCategory(store_conf, *iter, model);
 
       if (!result) {
@@ -734,7 +539,7 @@ bool scribeHandler::configureStore(pStoreConf store_conf, int *numstores) {
 
 
 // Configures the store specified by the store configuration and category.
-boost::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
+boost::shared_ptr<StoreQueue> scribeCollectd::configureStoreCategory(
   pStoreConf store_conf,                       //configuration for store
   const string &category,                      //category name
   const boost::shared_ptr<StoreQueue> &model,  //model to use (optional)
@@ -744,7 +549,7 @@ boost::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
   bool already_created = false;
 
   if (category.empty()) {
-    setStatusDetails("Bad config - store with blank category");
+    LOG_OPER("Bad config - store with blank category");
     return boost::shared_ptr<StoreQueue>();
   }
 
@@ -762,7 +567,7 @@ boost::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
       type.empty()) {
     string errormsg("Bad config - no type for store with category: ");
     errormsg += category;
-    setStatusDetails(errormsg);
+    LOG_OPER(errormsg);
     return boost::shared_ptr<StoreQueue>();
   }
 
@@ -808,7 +613,7 @@ boost::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
   if (!pstore) {
     string errormsg("Bad config - can't create a store of type: ");
     errormsg += type;
-    setStatusDetails(errormsg);
+    LOG_OPER(errormsg);
     return boost::shared_ptr<StoreQueue>();
   }
 
@@ -853,7 +658,7 @@ boost::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
 
 
 // delete everything in cats
-void scribeHandler::deleteCategoryMap(category_map_t& cats) {
+void scribeCollectd::deleteCategoryMap(category_map_t& cats) {
   for (category_map_t::iterator cat_iter = cats.begin();
        cat_iter != cats.end();
        ++cat_iter) {
@@ -877,4 +682,26 @@ void scribeHandler::deleteCategoryMap(category_map_t& cats) {
     pstores->clear();
   } // for each category
   cats.clear();
+}
+
+inline scribeCollectd* real(scribestruct *s) { return static_cast<scribeCollectd*>(s); }
+
+scribestruct* new_scribe() {
+  scribeCollectd *d = new scribeCollectd();
+  d->initialize();
+
+  return d;
+}
+void delete_scribe(scribestruct* s) { delete real(s); }
+void scribe_log(scribestruct* s, char *log, char *category) {
+
+  LogEntry le = LogEntry();
+  le.__set_category(string(category));
+  le.__set_message(string(log));
+
+  vector<LogEntry>  messages;
+  messages.push_back(le);
+
+  real(s)->Log(messages);
+  //LOG_OPER(string(log))
 }

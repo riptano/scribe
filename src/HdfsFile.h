@@ -7,7 +7,7 @@
 #ifndef HDFS_FILE_H
 #define HDFS_FILE_H
 
-#ifdef USE_SCRIBE_HDFS
+/*#ifdef USE_SCRIBE_HDFS
 #include "hdfs.h"
 
 class HdfsFile : public FileInterface {
@@ -44,9 +44,8 @@ class HdfsFile : public FileInterface {
   HdfsFile& operator=(HdfsFile& rhs);
 };
 
-/**
- * A static lock
- */
+
+ // A static lock
 class HdfsLock {
   private:
     static bool lockInitialized;
@@ -84,6 +83,7 @@ class HdfsFile : public FileInterface {
   bool createDirectory(std::string path) { return false; };
   bool createSymlink(std::string newpath, std::string oldpath) { return false; };
 };
-#endif // USE_SCRIBE_HDFS
 
+#endif // USE_SCRIBE_HDFS
+*/
 #endif // HDFS_FILE_H

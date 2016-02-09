@@ -2,7 +2,6 @@ ACLOCAL_AMFLAGS = -I aclocal
 
 @GLOBAL_HEADER_MK@
 
-@PRODUCT_MK@
 
 SUBDIRS = . src lib/py
 

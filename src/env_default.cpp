@@ -96,9 +96,11 @@ uint32_t scribe::strhash::hash32(const char *s) {
  * Starting a scribe server.
  */
 // note: this function uses global g_Handler.
+
 void scribe::startServer() {
+/*
   boost::shared_ptr<TProcessor> processor(new scribeProcessor(g_Handler));
-  /* This factory is for binary compatibility. */
+  //This factory is for binary compatibility.
   boost::shared_ptr<TProtocolFactory> protocol_factory(
     new TBinaryProtocolFactory(0, 0, false, false)
   );
@@ -136,6 +138,7 @@ void scribe::startServer() {
 
   server->serve();
   // this function never returns
+  */
 }
 
 
