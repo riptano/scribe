@@ -3,7 +3,7 @@ ACLOCAL_AMFLAGS = -I aclocal
 @GLOBAL_HEADER_MK@
 
 
-SUBDIRS = . src lib/py
+#SUBDIRS = . src lib/py
 
 BUILT_SOURCES =
 
