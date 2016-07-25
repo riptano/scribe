@@ -47,7 +47,7 @@ endif
 
 
 # Set libraries external to this component.
-EXTERNAL_LIBS = -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lthrift -lthriftnb
+EXTERNAL_LIBS = $(BOOST_LDFLAGS) -L/usr/lib/x86_64-linux-gnu $(BOOST_SYSTEM_LIB) $(BOOST_FILESYSTEM_LIB) -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lthrift -lthriftnb
 EXTERNAL_LIBS += -levent -lpthread
 if USE_SCRIBE_HDFS
   EXTERNAL_LIBS += -lhdfs -ljvm
