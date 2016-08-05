@@ -47,7 +47,7 @@ endif
 
 
 # Set libraries external to this component.
-EXTERNAL_LIBS = -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lthrift -lthriftnb
+EXTERNAL_LIBS = -L/usr/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu/lib -lboost_system -lboost_filesystem -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lthrift -lthriftnb
 EXTERNAL_LIBS += -levent -lpthread
 if USE_SCRIBE_HDFS
   EXTERNAL_LIBS += -lhdfs -ljvm
@@ -67,7 +67,7 @@ AM_CPPFLAGS += -I$(hadoop_home)/include
 AM_CPPFLAGS += $(BOOST_CPPFLAGS) -std=c++11
 AM_CPPFLAGS += $(FB_CPPFLAGS) $(DEBUG_CPPFLAGS)
 
-AM_LDFLAGS = $(BOOST_LDFLAGS) $(BOOST_SYSTEM_LIB) $(BOOST_FILESYSTEM_LIB)
+AM_LDFLAGS =  $(BOOST_LDFLAGS) $(BOOST_SYSTEM_LIB) $(BOOST_FILESYSTEM_LIB)
 
 # Section 3 #############################################################################
 # GENERATE BUILD RULES
@@ -75,7 +75,7 @@ AM_LDFLAGS = $(BOOST_LDFLAGS) $(BOOST_SYSTEM_LIB) $(BOOST_FILESYSTEM_LIB)
 # Use <progname|libname>_<FLAG> to set prog / lib specific flag s
 # foo_CXXFLAGS foo_CPPFLAGS foo_LDFLAGS foo_LDADD
 
-# Static -- multiple libraries can be defined
+# Static -- mltiple libraries can be defined
 if STATIC
 lib_LIBRARIES = libscribe.a libdynamicbucketupdater.a
 libscribe_a_SOURCES =  gen-cpp/scribe.cpp gen-cpp/scribe_types.cpp gen-cpp/scribe_constants.cpp
