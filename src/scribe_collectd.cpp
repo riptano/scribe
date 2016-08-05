@@ -64,10 +64,6 @@ scribeCollectd::~scribeCollectd() {
   deleteCategoryMap(category_prefixes);
 }
 
-
-
-
-
 // Should be called while holding a writeLock on scribeHandlerLock
 bool scribeCollectd::createCategoryFromModel(
   const string &category, const boost::shared_ptr<StoreQueue> &model) {
@@ -684,15 +680,28 @@ void scribeCollectd::deleteCategoryMap(category_map_t& cats) {
   cats.clear();
 }
 
-inline scribeCollectd* real(scribestruct *s) { return static_cast<scribeCollectd*>(s); }
+inline scribeCollectd* real(scribestruct *s)
+{
+  return static_cast<scribeCollectd*>(s);
+}
 
-scribestruct* new_scribe() {
+scribestruct* new_scribe()
+{
   scribeCollectd *d = new scribeCollectd();
   d->initialize();
 
   return d;
 }
-void delete_scribe(scribestruct* s) { delete real(s); }
+
+void delete_scribe(scribestruct* s)
+{
+    if (s == NULL)
+      return;
+
+    real(s)->shutdown();
+    delete real(s);
+}
+
 void scribe_log(scribestruct* s, char *log, char *category) {
 
   LogEntry le = LogEntry();
