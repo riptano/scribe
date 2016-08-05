@@ -48,7 +48,7 @@ scribeCollectd::scribeCollectd()
   :
     port(9999),
     checkPeriod(DEFAULT_CHECK_PERIOD),
-    configFilename("/tmp/config.conf"),
+    configFilename("/opt/collectd/conf/collectd-scribe.conf"),
     statusDetails("initial state"),
     numMsgLastSecond(0),
     maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
