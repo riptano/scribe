@@ -110,7 +110,6 @@ string StdFile::getFrame(unsigned data_length) {
     char buf[UINT_SIZE];
     serializeUInt(data_length, buf);
     return string(buf, UINT_SIZE);
-
   } else {
     return string();
   }

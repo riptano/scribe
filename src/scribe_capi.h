@@ -7,9 +7,15 @@ extern "C" {
 
 typedef struct scribestruct scribestruct;
 
-scribestruct* new_scribe();
-void delete_scribe(scribestruct *s);
-void scribe_log(scribestruct *s, char[], char[]);
+extern scribestruct *scribe_instance;
+
+int is_scribe_initialized();
+void new_scribe();
+void new_scribe2(char[]);
+void delete_scribe();
+void scribe_log(char[], char[]);
+
+void reinitialize_scribe();
 
 #ifdef __cplusplus
 }

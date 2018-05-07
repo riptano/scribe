@@ -34,6 +34,8 @@ using namespace std;
 
 using boost::shared_ptr;
 
+//Global instace of scribe
+scribestruct *scribe_instance = NULL;
 
 #define DEFAULT_CHECK_PERIOD       5
 #define DEFAULT_MAX_MSG_PER_SECOND 0
@@ -49,6 +51,21 @@ scribeCollectd::scribeCollectd()
     port(9999),
     checkPeriod(DEFAULT_CHECK_PERIOD),
     configFilename("/opt/collectd/conf/collectd-scribe.conf"),
+    statusDetails("initial state"),
+    numMsgLastSecond(0),
+    maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
+    maxConn(DEFAULT_MAX_CONN),
+    maxQueueSize(DEFAULT_MAX_QUEUE_SIZE),
+    newThreadPerCategory(true) {
+  time(&lastMsgTime);
+  scribeHandlerLock = scribe::concurrency::createReadWriteMutex();
+}
+
+scribeCollectd::scribeCollectd(char *config_)
+  :
+    port(9999),
+    checkPeriod(DEFAULT_CHECK_PERIOD),
+    configFilename(config_),
     statusDetails("initial state"),
     numMsgLastSecond(0),
     maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
@@ -378,6 +395,9 @@ void scribeCollectd::initialize() {
     } else {
       config_file = configFilename;
     }
+
+    LOG_OPER("Parsing scribe config file %s", config_file.c_str())
+
     localconfig.parseConfig(config_file);
     // overwrite the current StoreConf
     config = localconfig;
@@ -680,37 +700,59 @@ void scribeCollectd::deleteCategoryMap(category_map_t& cats) {
   cats.clear();
 }
 
-inline scribeCollectd* real(scribestruct *s)
+/////// C-API ////////
+
+inline scribeCollectd* real()
 {
-  return static_cast<scribeCollectd*>(s);
+   return static_cast<scribeCollectd*>(scribe_instance);
 }
 
-scribestruct* new_scribe()
+int is_scribe_initialized()
+{
+  return scribe_instance != NULL;
+}
+
+void new_scribe()
 {
   scribeCollectd *d = new scribeCollectd();
   d->initialize();
 
-  return d;
+  scribe_instance = static_cast<scribestruct*>(d);
 }
 
-void delete_scribe(scribestruct* s)
+void new_scribe2(char* config_)
 {
-    if (s == NULL)
-      return;
+  scribeCollectd *d = new scribeCollectd(config_);
+  d->initialize();
 
-    real(s)->shutdown();
-    delete real(s);
+  scribe_instance = static_cast<scribestruct*>(d);
 }
 
-void scribe_log(scribestruct* s, char *log, char *category) {
+void delete_scribe()
+{
+    real()->shutdown();
+    delete scribe_instance;
+    scribe_instance = NULL;
+}
 
+void scribe_log(char *log, char *category) {
   LogEntry le = LogEntry();
   le.__set_category(string(category));
-  le.__set_message(string(log));
+  string msg = string(log);
+
+  //Ensure all messages end with \n
+  if (log[strlen(log) - 1] != '\n')
+    msg += "\n";
+
+  le.__set_message(msg);
 
   vector<LogEntry>  messages;
   messages.push_back(le);
 
-  real(s)->Log(messages);
-  //LOG_OPER(string(log))
+  real()->Log(messages);
+}
+
+void reinitialize_scribe()
+{
+    real()->reinitialize();
 }

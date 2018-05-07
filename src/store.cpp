@@ -91,6 +91,9 @@ Store::createStore(StoreQueue* storeq, const string& type,
   } else if (0 == type.compare("network")) {
     return boost::shared_ptr<Store>(new NetworkStore(storeq, category,
                                               multi_category));
+  } else if (0 == type.compare("http")) {
+    return boost::shared_ptr<Store>(new HttpStore(storeq, category,
+                                                 multi_category));
   } else if (0 == type.compare("bucket")) {
     return boost::shared_ptr<Store>(new BucketStore(storeq, category,
                                             multi_category));
@@ -874,7 +877,7 @@ bool FileStore::writeMessages(boost::shared_ptr<logentry_vector_t> messages,
           success = false;
           break;
         }
-
+        LOG_OPER("Wrote %lu messages to file", num_buffered);
         num_written += num_buffered;
         currentSize += current_size_buffered;
         num_buffered = 0;
@@ -1371,8 +1374,24 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
       string msg("Bad config - buffer primary store cannot be multistore");
       setStatus(msg);
     } else {
+      LOG_OPER("Loading %s", type.c_str());
+      try{
       primaryStore = createStore(storeQueue, type, categoryHandled, false,
                                   multiCategory);
+       }catch(const std::exception& e){
+
+        std::exception_ptr expPtr = std::current_exception();
+        try
+        {
+           if(expPtr) std::rethrow_exception(expPtr);
+        }
+        catch(const std::exception& e) //it would not work if you pass by value
+        {
+           LOG_OPER("ERR %s",e.what());
+        }
+
+         throw;
+       }
       primaryStore->configure(primary_store_conf, storeConf);
     }
   }
@@ -2031,6 +2050,187 @@ NetworkStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages) {
 }
 
 void NetworkStore::flush() {
+  // Nothing to do
+}
+
+
+HttpStore::HttpStore(StoreQueue* storeq,
+                          const string& category,
+                          bool multi_category)
+  : Store(storeq, category, "http", multi_category),
+    useConnPool(false),
+    serviceBased(false),
+    listBased(false),
+    ssl(false),
+    remotePort(0),
+    serviceCacheTimeout(DEFAULT_NETWORKSTORE_CACHE_TIMEOUT),
+    ignoreNetworkError(false),
+    configmod(NULL),
+    opened(false),
+    lastServiceCheck(0) {
+  // we can't open the connection until we get configured
+
+  // the bool for opened ensures that we don't make duplicate
+  // close calls, which would screw up the connection pool's
+  // reference counting.
+}
+
+HttpStore::~HttpStore() {
+  close();
+}
+
+void HttpStore::configure(pStoreConf configuration, pStoreConf parent) {
+  Store::configure(configuration, parent);
+
+  serviceBased = false;
+  configuration->getString("remote_host", remoteHost);
+  configuration->getUnsigned("remote_port", remotePort);
+
+  if (!configuration->getInt("timeout", timeout)) {
+    timeout = DEFAULT_SOCKET_TIMEOUT_MS;
+  }
+
+  string temp;
+  if (configuration->getString("use_conn_pool", temp)) {
+    if (0 == temp.compare("yes")) {
+      useConnPool = true;
+    }
+  }
+  if (configuration->getString("ignore_network_error", temp)) {
+    if (0 == temp.compare("yes")) {
+      ignoreNetworkError = true;
+    }
+  }
+
+  if (configuration->getString("ca_cert", caCert)) {
+    ssl = true;
+  }
+
+  configuration->getString("http_path", httpPath);
+  configuration->getString("node_id", nodeId);
+  configuration->getString("node_id_passphrase", nodeIdPassphrase);
+  configuration->getUnsigned("upload_interval_seconds", upload_interval_seconds);
+}
+
+void HttpStore::periodicCheck() {
+
+}
+
+bool HttpStore::loadFromList(const std::string &list, unsigned long defaultPort,
+                                server_vector_t& _return) {
+  vector<string> strs;
+  boost::split(strs, list, boost::is_any_of("\t "));
+  vector<string> split;
+  for (vector<string>::iterator iter = strs.begin();
+       iter != strs.end();
+       iter++) {
+    if (iter->find(":") != string::npos) {
+      // split the port
+      boost::split(split, (*iter), boost::is_any_of(":"));
+      _return.push_back(pair<string, int>(split[0], atoi(split[1].c_str())));
+    } else {
+      _return.push_back(pair<string, int>((*iter), defaultPort));
+    }
+  }
+  return true;
+}
+
+bool HttpStore::open() {
+
+  if (isOpen()) {
+    /* re-opening an already open NetworkStore can be bad. For example,
+     * it can lead to bad reference counting on g_connpool connections
+     */
+    return (true);
+  }
+
+  unpooledConn = boost::shared_ptr<scribeConn>(new scribeConn(remoteHost,
+          remotePort, httpPath, caCert, nodeId, nodeIdPassphrase, static_cast<int>(timeout)));
+  opened = unpooledConn->open();
+  if (!opened) {
+    unpooledConn.reset();
+  }
+
+  if (opened || ignoreNetworkError) {
+    // clear status on success or if we should not signal error here
+    setStatus("");
+  } else {
+    setStatus("Failed to connect");
+  }
+  return opened;
+}
+
+void HttpStore::close() {
+  if (!opened) {
+    return;
+  }
+
+  opened = false;
+  if (unpooledConn != NULL) {
+    unpooledConn->close();
+  }
+  unpooledConn.reset();
+}
+
+bool HttpStore::isOpen() {
+  return opened;
+}
+
+boost::shared_ptr<Store> HttpStore::copy(const std::string &category) {
+  HttpStore *store = new HttpStore(storeQueue, category, multiCategory);
+  boost::shared_ptr<Store> copied = boost::shared_ptr<Store>(store);
+
+  store->useConnPool = useConnPool;
+  store->serviceBased = serviceBased;
+  store->listBased = listBased;
+  store->timeout = timeout;
+  store->remoteHost = remoteHost;
+  store->remotePort = remotePort;
+  store->serviceName = serviceName;
+  store->httpPath = httpPath;
+  store->nodeId = nodeId;
+  store->nodeIdPassphrase = nodeIdPassphrase;
+  store->caCert = caCert;
+  store->upload_interval_seconds = upload_interval_seconds;
+
+  return copied;
+}
+
+
+// If the size of messages is greater than a threshold
+// first try sending an empty vector to catch dfqs
+bool
+HttpStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages) {
+  int ret;
+
+  if (!isOpen()) {
+    if (!open()) {
+    LOG_OPER("[%s] Could not open HttpStore in handleMessages",
+             categoryHandled.c_str());
+    return false;
+    }
+  }
+
+  bool tryDummySend = shouldSendDummy(messages);
+  boost::shared_ptr<logentry_vector_t> dummymessages(new logentry_vector_t);
+
+  if (unpooledConn) {
+    if (!tryDummySend ||
+        ((ret = unpooledConn->send(dummymessages)) == CONN_OK)) {
+      ret = unpooledConn->sendInsights(messages);
+    }
+  } else {
+    ret = CONN_FATAL;
+    LOG_OPER("[%s] Logic error: HttpStore::handleMessages unpooledConn "
+        "is NULL", categoryHandled.c_str());
+  }
+  if (ret == CONN_FATAL) {
+    close();
+  }
+  return (ret == CONN_OK);
+}
+
+void HttpStore::flush() {
   // Nothing to do
 }
 

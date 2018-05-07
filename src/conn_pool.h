@@ -33,6 +33,8 @@
 class scribeConn {
  public:
   scribeConn(const std::string& host, unsigned long port, int timeout);
+  scribeConn(const std::string& host, unsigned long port, const std::string& path, const std::string& ca_cert,
+             const std::string& nodeId, std::string& nodeIdPassphrase, int timeout);
   scribeConn(const std::string &service, const server_vector_t &servers, int timeout);
   virtual ~scribeConn();
 
@@ -48,15 +50,18 @@ class scribeConn {
   bool open();
   void close();
   int send(boost::shared_ptr<logentry_vector_t> messages);
+  int sendInsights(boost::shared_ptr<logentry_vector_t> messages);
 
  private:
   std::string connectionString();
 
  protected:
   boost::shared_ptr<apache::thrift::transport::TSocket> socket;
+  boost::shared_ptr<apache::thrift::transport::TInsightsClient> httpTransport;
   boost::shared_ptr<apache::thrift::transport::TFramedTransport> framedTransport;
-  boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> protocol;
-  boost::shared_ptr<scribe::thrift::scribeClient> resendClient;
+  boost::shared_ptr<apache::thrift::protocol::TProtocol> protocol;
+  boost::shared_ptr<scribe::thrift::scribeIf> resendClient;
+  boost::shared_ptr<apache::thrift::transport::TSSLSocketFactory> sslFactory;
 
   unsigned refCount;
 
@@ -65,6 +70,10 @@ class scribeConn {
   server_vector_t serverList;
   std::string remoteHost;
   unsigned long remotePort;
+  std::string caCert;
+  std::string httpPath;
+  std::string nodeId;
+  std::string nodeIdPassphrase;
   int timeout; // connection, send, and recv timeout
   pthread_mutex_t mutex;
 };

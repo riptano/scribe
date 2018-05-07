@@ -21,15 +21,17 @@
 #define SCRIBE_ENV
 
 #include "thrift/protocol/TBinaryProtocol.h"
+#include "thrift/protocol/TJSONProtocol.h"
 #include "thrift/server/TNonblockingServer.h"
 #include "thrift/concurrency/ThreadManager.h"
 #include "thrift/concurrency/PosixThreadFactory.h"
 #include "thrift/concurrency/Mutex.h"
 #include "thrift/transport/TSocket.h"
+#include "thrift/transport/TSSLSocket.h"
 #include "thrift/transport/TSocketPool.h"
 #include "thrift/transport/TServerSocket.h"
 #include "thrift/transport/TTransportUtils.h"
-#include "thrift/transport/THttpClient.h"
+#include "TInsightsClient.h"
 #include "thrift/transport/TFileTransport.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TSimpleFileTransport.h"

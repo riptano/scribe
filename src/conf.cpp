@@ -178,6 +178,8 @@ void StoreConf::parseConfig(const string& filename) {
   } else {
     ostringstream msg;
     msg << "Failed to open config file <" << filename << ">";
+    LOG_OPER("%s", msg.str().c_str())
+
     throw runtime_error(msg.str());
   }
 

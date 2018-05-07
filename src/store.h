@@ -78,6 +78,10 @@ class Store {
   // following methods must be overidden to make a store readable
   virtual bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
                           struct tm* now);
+
+  // delete old data above threshold
+  //virtual bool deleteOldestIfOverThreshold(long limitBytes);
+
   virtual void deleteOldest(struct tm* now);
   virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
                              struct tm* now);
@@ -418,6 +422,69 @@ class NetworkStore : public Store {
   NetworkStore(NetworkStore& rhs);
   NetworkStore& operator=(NetworkStore& rhs);
 };
+
+/*
+ * This store sends messages to another scribe server.
+ * This class is really just an adapter to the global
+ * connection pool g_connPool.
+ */
+class HttpStore : public Store {
+
+ public:
+  HttpStore(StoreQueue* storeq,
+               const std::string& category,
+               bool multi_category);
+  ~HttpStore();
+
+  boost::shared_ptr<Store> copy(const std::string &category);
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
+  bool open();
+  bool isOpen();
+  void configure(pStoreConf configuration, pStoreConf parent);
+  void close();
+  void flush();
+  void periodicCheck();
+
+ protected:
+  static const long int DEFAULT_SOCKET_TIMEOUT_MS = 5000; // 5 sec timeout
+  bool loadFromList(const std::string &list, unsigned long defaultPort,
+                    server_vector_t& _return);
+
+  // configuration
+  bool useConnPool;
+  bool serviceBased;
+  bool listBased;
+  bool ssl;
+  std::string caCert;
+  std::string httpPath;
+  std::string nodeId;
+  std::string nodeIdPassphrase;
+  unsigned long upload_interval_seconds;
+  long int timeout;
+  std::string remoteHost;
+  unsigned long remotePort; // long because it works with config code
+  std::string serviceName;
+  std::string serviceList;
+  unsigned long serviceListDefaultPort;
+  std::string serviceOptions;
+  server_vector_t servers;
+  unsigned long serviceCacheTimeout;
+  time_t lastServiceCheck;
+  // if true do not update status to reflect failure to connect
+  bool ignoreNetworkError;
+  NetworkDynamicConfigMod* configmod;
+
+  // state
+  bool opened;
+  boost::shared_ptr<scribeConn> unpooledConn; // null if useConnPool
+
+ private:
+  // disallow copy, assignment, and empty construction
+  HttpStore();
+  HttpStore(HttpStore& rhs);
+  HttpStore& operator=(HttpStore& rhs);
+};
+
 
 /*
  * This store separates messages into many groups based on a

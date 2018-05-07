@@ -167,6 +167,27 @@ scribeConn::scribeConn(const string& hostname, unsigned long port, int timeout_)
   pthread_mutex_init(&mutex, NULL);
 }
 
+scribeConn::scribeConn(const string& hostname, unsigned long port, const std::string& path_, const std::string &ca_cert,
+ const std::string& node_id, std::string& node_id_passphrase, int timeout_)
+  : refCount(1),
+  serviceBased(false),
+  remoteHost(hostname),
+  remotePort(port),
+  caCert(ca_cert),
+  httpPath(path_),
+  nodeId(node_id),
+  nodeIdPassphrase(node_id_passphrase),
+  timeout(timeout_) {
+  pthread_mutex_init(&mutex, NULL);
+
+  if (!caCert.empty()) {
+    sslFactory = shared_ptr<TSSLSocketFactory>(new TSSLSocketFactory());
+    sslFactory->ciphers("ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    sslFactory->loadTrustedCertificates(caCert.c_str());
+    sslFactory->authenticate(true);
+  }
+}
+
 scribeConn::scribeConn(const string& service, const server_vector_t &servers, int timeout_)
   : refCount(1),
   serviceBased(true),
@@ -205,7 +226,7 @@ void scribeConn::unlock() {
 }
 
 bool scribeConn::isOpen() {
-  return framedTransport->isOpen();
+  return framedTransport ? framedTransport->isOpen() : httpTransport->isOpen();
 }
 
 bool scribeConn::open() {
@@ -213,7 +234,9 @@ bool scribeConn::open() {
 
     socket = serviceBased ?
       shared_ptr<TSocket>(new TSocketPool(serverList)) :
-      shared_ptr<TSocket>(new TSocket(remoteHost, remotePort));
+        sslFactory ?
+            shared_ptr<TSocket>(sslFactory->createSocket(remoteHost, remotePort)) :
+            shared_ptr<TSocket>(new TSocket(remoteHost, remotePort));
 
     if (!socket) {
       throw std::runtime_error("Failed to create socket");
@@ -234,21 +257,31 @@ bool scribeConn::open() {
      */
     socket->setLinger(0, 0);
 
-    framedTransport = shared_ptr<TFramedTransport>(new TFramedTransport(socket));
-    if (!framedTransport) {
-      throw std::runtime_error("Failed to create framed transport");
+
+    if (!httpPath.empty()) {
+        LOG_OPER("Using HTTP Client");
+        httpTransport = shared_ptr<TInsightsClient>(new TInsightsClient(socket, remoteHost, httpPath, nodeId, nodeIdPassphrase));
+        protocol = shared_ptr<TProtocol>(new TJSONProtocol(httpTransport));
+
+    } else {
+            LOG_OPER("Using Socket only");
+            framedTransport = shared_ptr<TFramedTransport>(new TFramedTransport(socket));
+            protocol = shared_ptr<TProtocol>(new TBinaryProtocol(framedTransport));
+            //protocol->setStrict(false, false);
     }
-    protocol = shared_ptr<TBinaryProtocol>(new TBinaryProtocol(framedTransport));
+
+    if (!framedTransport && ! httpTransport) {
+      throw std::runtime_error("Failed to create transport");
+    }
     if (!protocol) {
       throw std::runtime_error("Failed to create protocol");
     }
-    protocol->setStrict(false, false);
     resendClient = shared_ptr<scribeClient>(new scribeClient(protocol));
     if (!resendClient) {
       throw std::runtime_error("Failed to create network client");
     }
 
-    framedTransport->open();
+    framedTransport ? framedTransport->open() : httpTransport->open();
     if (serviceBased) {
       remoteHost = socket->getPeerHost();
     }
@@ -268,7 +301,7 @@ bool scribeConn::open() {
 
 void scribeConn::close() {
   try {
-    framedTransport->close();
+    framedTransport ? framedTransport->close() : httpTransport->close();
   } catch (const TTransportException& ttx) {
     LOG_OPER("error <%s> while closing connection to remote scribe server %s",
              ttx.what(), connectionString().c_str());
@@ -279,6 +312,10 @@ int
 scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
   bool fatal;
   int size = messages->size();
+
+  if (size == 0)
+    return (CONN_OK);
+
   if (!isOpen()) {
     if (!open()) {
       return (CONN_FATAL);
@@ -315,6 +352,14 @@ scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
         "error <%s>", size, connectionString().c_str(), ttx.what());
   } catch (...) {
     fatal = true;
+
+    std::exception_ptr expPtr = std::current_exception();
+    try {
+       if(expPtr) std::rethrow_exception(expPtr);
+    } catch(const std::exception& e) {
+       LOG_OPER("ERR %s",e.what());
+    }
+
     LOG_OPER("Unknown exception sending <%d> messages to remote scribe "
         "server %s", size, connectionString().c_str());
   }
@@ -330,6 +375,88 @@ scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
   }
   return (CONN_TRANSIENT);
 }
+
+
+/**
+ * Like the send above except it uses the transport directly vs going
+ * through the thrift protocol
+ */
+int scribeConn::sendInsights(boost::shared_ptr<logentry_vector_t> messages) {
+
+  bool fatal;
+  int size = messages->size();
+
+  if (size == 0)
+    return (CONN_OK);
+
+  if (!isOpen()) {
+    if (!open()) {
+      return (CONN_FATAL);
+    }
+  }
+
+  if (!httpTransport) {
+    LOG_OPER("HTTP Transport not being used");
+    return (CONN_FATAL);
+  }
+
+  // Copy the vector of pointers to a vector of objects
+  // This is because thrift doesn't support vectors of pointers,
+  // but we need to use them internally to avoid even more copies.
+  std::vector<LogEntry> msgs;
+  msgs.reserve(size);
+  for (logentry_vector_t::iterator iter = messages->begin();
+       iter != messages->end();
+       ++iter) {
+       httpTransport->write((uint8_t *)((*iter)->message.c_str()), (*iter)->message.size());
+  }
+
+  try {
+    httpTransport->flush();
+    httpTransport->readAll(); //Wait for response
+
+    int httpStatus = httpTransport->getHttpStatusCode();
+
+    if (httpStatus == 200) {
+      //g_Handler->incCounter("sent", size);
+      LOG_OPER("Successfully sent <%d> messages to remote scribe server %s",
+          size, connectionString().c_str());
+      return (CONN_OK);
+    }
+    fatal = false;
+    LOG_OPER("Failed to send <%d> messages, remote scribe server %s "
+        "returned error code <%d>", size, connectionString().c_str(),
+        (int) httpStatus);
+  } catch (const TTransportException& ttx) {
+    fatal = true;
+    LOG_OPER("Failed to send <%d> messages to remote scribe server %s "
+        "error <%s>", size, connectionString().c_str(), ttx.what());
+  } catch (...) {
+    fatal = true;
+
+    std::exception_ptr expPtr = std::current_exception();
+    try {
+       if(expPtr) std::rethrow_exception(expPtr);
+    } catch(const std::exception& e) {
+       LOG_OPER("ERR %s",e.what());
+    }
+
+    LOG_OPER("Unknown exception sending <%d> messages to remote scribe "
+        "server %s", size, connectionString().c_str());
+  }
+  /*
+   * If this is a serviceBased connection then close it. We might
+   * be lucky and get another service when we reopen this connection.
+   * If the IP:port of the remote is fixed then no point closing this
+   * connection ... we are going to get the same connection back.
+   */
+  if (serviceBased || fatal) {
+    close();
+    return (CONN_FATAL);
+  }
+  return (CONN_TRANSIENT);
+}
+
 
 std::string scribeConn::connectionString() {
         if (serviceBased) {

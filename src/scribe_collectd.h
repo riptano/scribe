@@ -36,6 +36,7 @@ struct scribestruct { };
 class scribeCollectd : public scribestruct {
  public:
   scribeCollectd();
+  scribeCollectd(char*);
   ~scribeCollectd();
 
   void shutdown();
