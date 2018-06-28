@@ -17,6 +17,8 @@ void scribe_log(char[], char[]);
 
 void reinitialize_scribe();
 
+int get_scribe_metric_update_interval_secs();
+
 #ifdef __cplusplus
 }
 #endif

@@ -20,7 +20,7 @@
 // @author John Song
 
 #include <boost/algorithm/string.hpp>
-#include "common.h"
+#include "scribe_common.h"
 #include "conf.h"
 #include "scribe_server.h"
 

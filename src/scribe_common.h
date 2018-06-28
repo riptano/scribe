@@ -47,13 +47,8 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/convenience.hpp>
 
-
-// For security reasons we can't release everything that's compiled
-// in at facebook. Other users might find this useful as well for
-// integrating to their environment.
-// Things in this file include network based configuration and debug messages
-#ifdef FACEBOOK
-#include "env_facebook.h"
+#ifdef COLLECTD
+#include "env_scribe_collectd.h"
 #else
 #include "env_default.h"
 #endif

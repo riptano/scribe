@@ -25,7 +25,7 @@
 // @author John Song
 
 #include <algorithm>
-#include "common.h"
+#include "scribe_common.h"
 #include "scribe_server.h"
 #include "network_dynamic_config.h"
 #include <boost/algorithm/string.hpp>

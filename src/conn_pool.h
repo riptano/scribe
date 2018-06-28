@@ -22,7 +22,7 @@
 #ifndef SCRIBE_CONN_POOL_H
 #define SCRIBE_CONN_POOL_H
 
-#include "common.h"
+#include "scribe_common.h"
 
 /* return codes for ScribeConn and ConnPool */
 #define CONN_FATAL        (-1) /* fatal error. close everything */

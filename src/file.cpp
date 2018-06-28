@@ -19,7 +19,7 @@
 // @author Jason Sobel
 // @author Avinash Lakshman
 
-#include "common.h"
+#include "scribe_common.h"
 #include "file.h"
 //#include "HdfsFile.h"
 

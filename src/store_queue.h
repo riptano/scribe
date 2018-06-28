@@ -24,7 +24,7 @@
 #ifndef SCRIBE_STORE_QUEUE_H
 #define SCRIBE_STORE_QUEUE_H
 
-#include "common.h"
+#include "scribe_common.h"
 
 class Store;
 

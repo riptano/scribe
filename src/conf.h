@@ -21,7 +21,7 @@
 #ifndef SCRIBE_CONF_H
 #define SCRIBE_CONF_H
 
-#include "common.h"
+#include "scribe_common.h"
 
 /*
  * This class reads and parses a configuration

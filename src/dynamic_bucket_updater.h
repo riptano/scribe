@@ -20,7 +20,7 @@
 #ifndef SCRIBE_DYNAMIC_BUCKET_UPDATER_H
 #define SCRIBE_DYNAMIC_BUCKET_UPDATER_H
 
-#include "common.h"
+#include "scribe_common.h"
 #include "conf.h"
 
 using std::string;

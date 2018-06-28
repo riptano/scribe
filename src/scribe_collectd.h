@@ -59,9 +59,16 @@ class scribeCollectd : public scribestruct {
   unsigned long getMaxConn() {
     return maxConn;
   }
+
+  inline int getMetricUpdateIntervalSecs() {
+    return metricUpdateIntervalSecs;
+  }
+
  private:
 
   unsigned long checkPeriod; // periodic check interval for all contained stores
+
+  unsigned long metricUpdateIntervalSecs; //Used by collectd to change the metric send interval
 
   // This map has an entry for each configured category.
   // Each of these entries is a map of type->StoreQueue.

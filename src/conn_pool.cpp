@@ -21,7 +21,7 @@
 // @author Avinash Lakshman
 
 
-#include "common.h"
+#include "scribe_common.h"
 #include "scribe_server.h"
 #include "conn_pool.h"
 

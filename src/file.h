@@ -22,7 +22,7 @@
 #ifndef SCRIBE_FILE_H
 #define SCRIBE_FILE_H
 
-#include "common.h"
+#include "scribe_common.h"
 
 class FileInterface {
  public:

@@ -21,7 +21,7 @@
 // @author Anthony Giardullo
 // @author John Song
 
-#include "common.h"
+#include "scribe_common.h"
 #include "scribe_server.h"
 
 using namespace std;

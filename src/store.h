@@ -27,7 +27,7 @@
 #ifndef SCRIBE_STORE_H
 #define SCRIBE_STORE_H
 
-#include "common.h" // includes std libs, thrift, and stl typedefs
+#include "scribe_common.h" // includes std libs, thrift, and stl typedefs
 #include "conf.h"
 #include "file.h"
 #include "conn_pool.h"

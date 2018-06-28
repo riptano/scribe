@@ -21,7 +21,7 @@
 // @author Avinash Lakshman
 // @author Anthony Giardullo
 
-#include "common.h"
+#include "scribe_common.h"
 #include "scribe_collectd.h"
 
 using namespace apache::thrift::concurrency;
@@ -42,6 +42,7 @@ scribestruct *scribe_instance = NULL;
 #define DEFAULT_MAX_QUEUE_SIZE     5000000LL
 #define DEFAULT_SERVER_THREADS     3
 #define DEFAULT_MAX_CONN           0
+#define DEFAULT_METRIC_UPDATE_INTERVAL_SEC 0
 
 static string overall_category = "scribe_overall";
 static string log_separator = ":";
@@ -56,6 +57,7 @@ scribeCollectd::scribeCollectd()
     maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
     maxConn(DEFAULT_MAX_CONN),
     maxQueueSize(DEFAULT_MAX_QUEUE_SIZE),
+    metricUpdateIntervalSecs(DEFAULT_METRIC_UPDATE_INTERVAL_SEC),
     newThreadPerCategory(true) {
   time(&lastMsgTime);
   scribeHandlerLock = scribe::concurrency::createReadWriteMutex();
@@ -71,6 +73,7 @@ scribeCollectd::scribeCollectd(char *config_)
     maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
     maxConn(DEFAULT_MAX_CONN),
     maxQueueSize(DEFAULT_MAX_QUEUE_SIZE),
+    metricUpdateIntervalSecs(DEFAULT_METRIC_UPDATE_INTERVAL_SEC),
     newThreadPerCategory(true) {
   time(&lastMsgTime);
   scribeHandlerLock = scribe::concurrency::createReadWriteMutex();
@@ -238,8 +241,6 @@ void scribeCollectd::addMessage(
 
     (*store_iter)->addMessage(ptr);
   }
-
-
 }
 
 
@@ -247,7 +248,6 @@ ResultCode scribeCollectd::Log(const vector<LogEntry>&  messages) {
   ResultCode result = TRY_LATER;
 
   scribeHandlerLock->acquireRead();
-
 
   if (throttleRequest(messages)) {
     result = TRY_LATER;
@@ -406,6 +406,7 @@ void scribeCollectd::initialize() {
     config.getUnsigned("max_msg_per_second", maxMsgPerSecond);
     config.getUnsignedLongLong("max_queue_size", maxQueueSize);
     config.getUnsigned("check_interval", checkPeriod);
+    config.getUnsigned("metric_update_interval_secs", metricUpdateIntervalSecs);
     if (checkPeriod == 0) {
       checkPeriod = 1;
     }
@@ -469,7 +470,6 @@ void scribeCollectd::initialize() {
     deleteCategoryMap(categories);
     deleteCategoryMap(category_prefixes);
   }
-
 }
 
 
@@ -746,7 +746,7 @@ void scribe_log(char *log, char *category) {
 
   le.__set_message(msg);
 
-  vector<LogEntry>  messages;
+  vector<LogEntry> messages;
   messages.push_back(le);
 
   real()->Log(messages);
@@ -755,4 +755,9 @@ void scribe_log(char *log, char *category) {
 void reinitialize_scribe()
 {
     real()->reinitialize();
+}
+
+int get_scribe_metric_update_interval_secs()
+{
+    real()->getMetricUpdateIntervalSecs();
 }
