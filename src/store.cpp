@@ -1260,10 +1260,13 @@ BufferStore::BufferStore(StoreQueue* storeq,
     retryInterval(DEFAULT_MIN_RETRY),
     numContSuccess(0),
     state(DISCONNECTED),
+    primarySendBatchInterval(0),
     flushStreaming(false),
     maxByPassRatio(DEFAULT_BUFFERSTORE_BYPASS_MAXQSIZE_RATIO) {
 
     lastOpenAttempt = time(NULL);
+    lastPrimarySend = 0;
+    reconnectAttempts = 0;
 
   // we can't open the client conection until we get configured
 }
@@ -1283,6 +1286,9 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
                              (unsigned long&) avgRetryInterval);
   configuration->getUnsigned("retry_interval_range",
                              (unsigned long&) retryIntervalRange);
+
+  configuration->getUnsigned("primary_batch_interval_secs",
+                             (unsigned long&) primarySendBatchInterval);
 
   // Used in case of adaptive backoff
   // max_random_offset should be some fraction of max_retry_interval
@@ -1467,6 +1473,7 @@ boost::shared_ptr<Store> BufferStore::copy(const std::string &category) {
   store->maxRetryInterval = maxRetryInterval;
   store->maxRandomOffset = maxRandomOffset;
   store->adaptiveBackoff = adaptiveBackoff;
+  store->primarySendBatchInterval = primarySendBatchInterval;
 
   store->primaryStore = primaryStore->copy(category);
   store->secondaryStore = secondaryStore->copy(category);
@@ -1513,12 +1520,22 @@ void BufferStore::changeState(buffer_state_t new_state) {
     break;
   }
 
+  // modify new_state based on the the primaryBatchInterval
+  if (primarySendBatchInterval > 0 && new_state == STREAMING)
+  {
+    lastPrimarySend = time(NULL);
+    primaryStore->close();
+    new_state = DISCONNECTED;
+    LOG_OPER("Finished batch send, waiting for next interval");
+  }
+
   // entering this state
   switch (new_state) {
   case STREAMING:
     if (secondaryStore->isOpen()) {
       secondaryStore->close();
     }
+    reconnectAttempts = 0;
     break;
   case DISCONNECTED:
     // Do not set status here as it is possible to be in this frequently.
@@ -1527,6 +1544,14 @@ void BufferStore::changeState(buffer_state_t new_state) {
     //g_Handler->incCounter(categoryHandled, "retries");
     setNewRetryInterval(false);
     lastOpenAttempt = time(NULL);
+
+    //After 5 failed attempts to connect
+    //stop trying till next send interval
+    if (primarySendBatchInterval > 0 && ++reconnectAttempts > 5) {
+      LOG_OPER("Failed to connect to primary after 5 attempts, waiting till next interval");
+      lastPrimarySend = time(NULL);
+    }
+
     if (!secondaryStore->isOpen()) {
       secondaryStore->open();
     }
@@ -1535,6 +1560,7 @@ void BufferStore::changeState(buffer_state_t new_state) {
     if (!secondaryStore->isOpen()) {
       secondaryStore->open();
     }
+    reconnectAttempts = 0;
     break;
   default:
     break;
@@ -1556,7 +1582,7 @@ void BufferStore::periodicCheck() {
   localtime_r(&now, &nowinfo);
 
   if (state == DISCONNECTED) {
-    if (now - lastOpenAttempt > retryInterval) {
+    if (now - lastOpenAttempt > retryInterval && (primarySendBatchInterval <= 0 || now - lastPrimarySend > primarySendBatchInterval)) {
       if (primaryStore->open()) {
         // Success.  Check if we need to send buffers from secondary to primary
         if (replayBuffer) {
@@ -1571,12 +1597,13 @@ void BufferStore::periodicCheck() {
     }
   }
 
+
   // send data in case of backup
   if (state == SENDING_BUFFER) {
     // if queue size is getting large return so that there is time to forward
     // incoming messages directly to the primary store without buffering to
     // secondary store.
-    if (flushStreaming) {
+    if (flushStreaming && primarySendBatchInterval <= 0) {
       uint64_t qsize = storeQueue->getSize();
       if(qsize >=
           maxByPassRatio * 5000000LL){ //g_Handler->getMaxQueueSize()) {
@@ -2109,7 +2136,6 @@ void HttpStore::configure(pStoreConf configuration, pStoreConf parent) {
   configuration->getString("http_path", httpPath);
   configuration->getString("node_id", nodeId);
   configuration->getString("node_id_passphrase", nodeIdPassphrase);
-  configuration->getUnsigned("upload_interval_seconds", upload_interval_seconds);
 }
 
 void HttpStore::periodicCheck() {
@@ -2191,7 +2217,6 @@ boost::shared_ptr<Store> HttpStore::copy(const std::string &category) {
   store->nodeId = nodeId;
   store->nodeIdPassphrase = nodeIdPassphrase;
   store->caCert = caCert;
-  store->upload_interval_seconds = upload_interval_seconds;
 
   return copied;
 }

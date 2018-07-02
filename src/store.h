@@ -340,6 +340,7 @@ class BufferStore : public Store {
   unsigned long numContSuccess;   // number of continuous successful sends
   buffer_state_t state;
   time_t lastOpenAttempt;
+  unsigned int reconnectAttempts; // the number of failed attempts to connect
 
   bool flushStreaming;            // When flushStreaming is set to true,
                                   // incoming messages to a buffere store
@@ -359,6 +360,16 @@ class BufferStore : public Store {
                                   // incoming messages is calculated by
                                   // multiple max_queue_size with
                                   // buffer_bypass_max_ratio.
+
+
+  unsigned long primarySendBatchInterval; // The sec interval to send to primary store
+                                  // is <= 0 then primary is used always.
+                                  // If > 0 then writes go straight to secondary
+                                  // Once interval is reached we SEND_BUFFER then
+                                  // reset interval when finished.
+
+  time_t lastPrimarySend;
+
 
  private:
   // disallow copy, assignment, and empty construction
@@ -459,7 +470,6 @@ class HttpStore : public Store {
   std::string httpPath;
   std::string nodeId;
   std::string nodeIdPassphrase;
-  unsigned long upload_interval_seconds;
   long int timeout;
   std::string remoteHost;
   unsigned long remotePort; // long because it works with config code
