@@ -406,7 +406,10 @@ void scribeCollectd::initialize() {
     config.getUnsigned("max_msg_per_second", maxMsgPerSecond);
     config.getUnsignedLongLong("max_queue_size", maxQueueSize);
     config.getUnsigned("check_interval", checkPeriod);
-    config.getUnsigned("metric_update_interval_secs", metricUpdateIntervalSecs);
+    config.getUnsigned("metric_update_interval_secs", (unsigned long&) metricUpdateIntervalSecs);
+
+    LOG_OPER("metric_update_interval_secs  %lu", metricUpdateIntervalSecs);
+
     if (checkPeriod == 0) {
       checkPeriod = 1;
     }
