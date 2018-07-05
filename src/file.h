@@ -39,6 +39,7 @@ class FileInterface {
   virtual bool openTruncate() = 0;
   virtual bool isOpen() = 0;
   virtual void close() = 0;
+  virtual void compress() = 0;
   virtual bool write(const std::string& data) = 0;
   virtual void flush() = 0;
   virtual unsigned long fileSize() = 0;
@@ -67,6 +68,7 @@ class StdFile : public FileInterface {
   bool openTruncate();
   bool isOpen();
   void close();
+  void compress();
   bool write(const std::string& data);
   void flush();
   unsigned long fileSize();
@@ -83,6 +85,7 @@ class StdFile : public FileInterface {
   char* inputBuffer;
   unsigned bufferSize;
   std::fstream file;
+  boost::iostreams::filtering_istream in;
 
   // disallow copy, assignment, and empty construction
   StdFile();

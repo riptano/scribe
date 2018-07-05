@@ -203,6 +203,7 @@ FileStoreBase::FileStoreBase(StoreQueue* storeq,
     writeStats(false),
     rotateOnReopen(false),
     currentSize(0),
+    totalStoreBytesLimit(0),
     lastRollTime(0),
     eventsWritten(0) {
 }
@@ -320,6 +321,7 @@ void FileStoreBase::configure(pStoreConf configuration, pStoreConf parent) {
   configuration->getUnsigned("rotate_hour", rollHour);
   configuration->getUnsigned("rotate_minute", rollMinute);
   configuration->getUnsigned("chunk_size", chunkSize);
+  configuration->getUnsigned("store_byte_limit", totalStoreBytesLimit);
 
   if (configuration->getString("rotate_on_reopen", tmp)) {
     if (0 == tmp.compare("yes")) {
@@ -346,6 +348,7 @@ void FileStoreBase::copyCommon(const FileStoreBase *base) {
   baseSymlinkName = base->baseSymlinkName;
   writeStats = base->writeStats;
   rotateOnReopen = base->rotateOnReopen;
+  totalStoreBytesLimit = base-> totalStoreBytesLimit;
 
   /*
    * append the category name to the base file path and change the
@@ -395,6 +398,17 @@ void FileStoreBase::periodicCheck() {
 
   if (rotate) {
     rotateFile(rawtime);
+  }
+
+  //Enforce max size
+  if (totalStoreBytesLimit > 0) {
+     int attempt = 0;
+     unsigned long sizeOnDisk = totalBytesOnDisk();
+     while(totalStoreBytesLimit < sizeOnDisk && attempt++ < 5) {
+        deleteOldest(&timeinfo);
+        LOG_OPER("Enforcing disk limit %lu", sizeOnDisk);
+        sizeOnDisk = totalBytesOnDisk();
+     }
   }
 }
 
@@ -467,15 +481,18 @@ int FileStoreBase::findNewestFile(const string& base_filename) {
        iter != files.end();
        ++iter) {
 
-    int suffix = getFileSuffix(*iter, base_filename);
+    string filename = *iter;
+    bool isCompressed = boost::algorithm::ends_with(filename, ".gz");
+
+    int suffix = getFileSuffix(filename, base_filename, isCompressed);
     if (suffix > max_suffix) {
-      max_suffix = suffix;
+      max_suffix = suffix + (isCompressed ? 1 : 0   );
     }
   }
   return max_suffix;
 }
 
-int FileStoreBase::findOldestFile(const string& base_filename) {
+int FileStoreBase::findOldestFile(const string& base_filename, string &out_filename) {
 
   std::vector<std::string> files = FileInterface::list(filePath, fsType);
 
@@ -485,17 +502,48 @@ int FileStoreBase::findOldestFile(const string& base_filename) {
        iter != files.end();
        ++iter) {
 
-    int suffix = getFileSuffix(*iter, base_filename);
+    string filename = *iter;
+    bool isCompressed = boost::algorithm::ends_with(filename, ".gz");
+
+    int suffix = getFileSuffix(filename, base_filename, isCompressed);
     if (suffix >= 0 &&
         (min_suffix == -1 || suffix < min_suffix)) {
+      out_filename = filePath + "/" + filename;
       min_suffix = suffix;
     }
   }
   return min_suffix;
 }
 
+unsigned long FileStoreBase::totalBytesOnDisk() {
+
+  std::vector<std::string> files = FileInterface::list(filePath, fsType);
+
+  unsigned long totalBytes = 0;
+  std::string retval;
+  for (std::vector<std::string>::iterator iter = files.begin();
+       iter != files.end();
+       ++iter) {
+
+    string filename = filePath;
+    filename += "/" + *iter;
+
+    //ignore the current file so we don't corrupt writes
+    if (filename.compare(currentFilename) != 0) {
+      try {
+        totalBytes += boost::filesystem::file_size(filename.c_str());
+      } catch(const std::exception& e) {
+        LOG_OPER("Failed to get size for file <%s> error <%s>", filename.c_str(), e.what());
+      }
+    }
+  }
+
+  return totalBytes;
+}
+
+
 int FileStoreBase::getFileSuffix(const string& filename,
-                                const string& base_filename) {
+                                const string& base_filename, bool isCompressed) {
   int suffix = -1;
   string::size_type suffix_pos = filename.rfind('_');
 
@@ -505,9 +553,10 @@ int FileStoreBase::getFileSuffix(const string& filename,
       filename.length() > suffix_pos &&
       retVal) {
     stringstream stream;
-    stream << filename.substr(suffix_pos + 1);
+    stream << filename.substr(suffix_pos + 1, filename.length() - (isCompressed ? 3 : 0));
     stream >> suffix;
   }
+
   return suffix;
 }
 
@@ -681,11 +730,12 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
     if (writeFile) {
       if (writeMeta) {
         writeFile->write(meta_logfile_prefix + file);
-	if (addNewlines) {
-	  writeFile->write("\n");
-	}
+	    if (addNewlines) {
+	        writeFile->write("\n");
+	    }
       }
       writeFile->close();
+      writeFile->compress();
     }
 
     writeFile = FileInterface::createFileInterface(fsType, file, isBufferFile);
@@ -915,12 +965,12 @@ bool FileStore::writeMessages(boost::shared_ptr<logentry_vector_t> messages,
 // currently gets invoked from within a bufferstore
 void FileStore::deleteOldest(struct tm* now) {
 
-  int index = findOldestFile(makeBaseFilename(now));
+  string dfile;
+  int index = findOldestFile(makeBaseFilename(now), dfile);
   if (index < 0) {
     return;
   }
-  boost::shared_ptr<FileInterface> deletefile = FileInterface::createFileInterface(fsType,
-                                            makeFullFilename(index, now));
+  boost::shared_ptr<FileInterface> deletefile = FileInterface::createFileInterface(fsType, dfile);
   if (lostBytes_) {
     //g_Handler->incCounter(categoryHandled, "bytes lost", lostBytes_);
     lostBytes_ = 0;
@@ -932,7 +982,8 @@ void FileStore::deleteOldest(struct tm* now) {
 bool FileStore::replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
                               struct tm* now) {
   string base_name = makeBaseFilename(now);
-  int index = findOldestFile(base_name);
+  string oldest;
+  int index = findOldestFile(base_name, oldest);
   if (index < 0) {
     LOG_OPER("[%s] Could not find files <%s>", categoryHandled.c_str(), base_name.c_str());
     return false;
@@ -959,6 +1010,7 @@ bool FileStore::replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
 
   // close this file and re-open store
   infile->close();
+  infile->compress();
   open();
 
   return success;
@@ -968,14 +1020,13 @@ bool FileStore::readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages
                            struct tm* now) {
 
   long loss;
-
-  int index = findOldestFile(makeBaseFilename(now));
+  string filename;
+  int index = findOldestFile(makeBaseFilename(now), filename);
   if (index < 0) {
     // This isn't an error. It's legit to call readOldest when there aren't any
     // files left, in which case the call succeeds but returns messages empty.
     return true;
   }
-  std::string filename = makeFullFilename(index, now);
 
   boost::shared_ptr<FileInterface> infile = FileInterface::createFileInterface(fsType,
                                               filename, isBufferFile);
@@ -1033,11 +1084,13 @@ bool FileStore::empty(struct tm* now) {
   for (std::vector<std::string>::iterator iter = files.begin();
        iter != files.end();
        ++iter) {
-    int suffix =  getFileSuffix(*iter, base_filename);
+
+    string filename = *iter;
+    bool isCompressed = boost::algorithm::ends_with(filename, ".gz");
+
+    int suffix = getFileSuffix(filename, base_filename, isCompressed);
     if (-1 != suffix) {
-      std::string fullname = makeFullFilename(suffix, now);
-      boost::shared_ptr<FileInterface> file = FileInterface::createFileInterface(fsType,
-                                                                      fullname);
+      boost::shared_ptr<FileInterface> file = FileInterface::createFileInterface(fsType, filename);
       if (file->fileSize()) {
         return false;
       }
@@ -1526,6 +1579,10 @@ void BufferStore::changeState(buffer_state_t new_state) {
     lastPrimarySend = time(NULL);
     primaryStore->close();
     new_state = DISCONNECTED;
+    if (secondaryStore->isOpen()) {
+       secondaryStore->close();
+    }
+    reconnectAttempts = 0;
     LOG_OPER("Finished batch send, waiting for next interval");
   }
 

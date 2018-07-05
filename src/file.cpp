@@ -21,7 +21,6 @@
 
 #include "scribe_common.h"
 #include "file.h"
-//#include "HdfsFile.h"
 
 #define INITIAL_BUFFER_SIZE (64 * 1024)
 #define LARGE_BUFFER_SIZE (16 * INITIAL_BUFFER_SIZE) /* arbitrarily chosen */
@@ -89,7 +88,16 @@ bool StdFile::open(ios_base::openmode mode) {
     return false;
   }
 
+  if (boost::algorithm::ends_with(filename, ".gz"))
+    mode |= fstream::binary;
+
   file.open(filename.c_str(), mode);
+
+  if ((mode & fstream::in) == fstream::in) {
+    if ((mode & fstream::binary) == fstream::binary)
+        in.push(boost::iostreams::gzip_decompressor());
+    in.push(file);
+  }
 
   return file.good();
 }
@@ -102,6 +110,26 @@ void StdFile::close() {
   if (file.is_open()) {
     file.close();
   }
+}
+
+void StdFile::compress()
+{
+    close();
+
+    if (fileSize() == 0)
+        return;
+
+    boost::iostreams::file_source ifile(filename);
+    boost::iostreams::file_sink ofile(filename + ".gz");
+
+    boost::iostreams::filtering_istream fis;
+    fis.set_auto_close(true);
+    fis.push(boost::iostreams::gzip_compressor());
+    fis.push(ifile);
+
+    boost::iostreams::copy(fis, ofile);
+
+    deleteFile();
 }
 
 string StdFile::getFrame(unsigned data_length) {
@@ -181,8 +209,8 @@ StdFile::readNext(std::string& _return) {
     }
   }
 
-  file.read(inputBuffer, UINT_SIZE);
-  if (!file.good() || (size = unserializeUInt(inputBuffer)) == 0) {
+  in.read(inputBuffer, UINT_SIZE);
+  if (!in.good() || (size = unserializeUInt(inputBuffer)) == 0) {
     /* end of file */
     return (0);
   }
@@ -210,8 +238,8 @@ StdFile::readNext(std::string& _return) {
         filename.c_str());
     return (size);
   }
-  file.read(inputBuffer, size);
-  if (file.good()) {
+  in.read(inputBuffer, size);
+  if (in.good()) {
     _return.assign(inputBuffer, size);
   } else {
     CALC_LOSS();
@@ -227,8 +255,12 @@ StdFile::readNext(std::string& _return) {
 
 unsigned long StdFile::fileSize() {
   unsigned long size = 0;
+
+  if (!boost::filesystem::exists(filename))
+    return 0;
+
   try {
-    size = boost::filesystem::file_size(filename.c_str());
+    size = boost::filesystem::file_size(filename);
   } catch(const std::exception& e) {
     LOG_OPER("Failed to get size for file <%s> error <%s>", filename.c_str(), e.what());
     size = 0;

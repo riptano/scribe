@@ -79,8 +79,6 @@ class Store {
   virtual bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
                           struct tm* now);
 
-  // delete old data above threshold
-  //virtual bool deleteOldestIfOverThreshold(long limitBytes);
 
   virtual void deleteOldest(struct tm* now);
   virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
@@ -146,11 +144,14 @@ class FileStoreBase : public Store {
                                bool use_full_path = true);
   std::string makeBaseSymlink();
   std::string makeFullSymlink();
-  int  findOldestFile(const std::string& base_filename);
+  int  findOldestFile(const std::string& base_filename, std::string &out_filename);
   int  findNewestFile(const std::string& base_filename);
   int  getFileSuffix(const std::string& filename,
-                     const std::string& base_filename);
+                     const std::string& base_filename, bool isCompressed);
+
   void setHostNameSubDir();
+
+  unsigned long totalBytesOnDisk();
 
   // Configuration
   std::string baseFilePath;
@@ -181,6 +182,8 @@ class FileStoreBase : public Store {
   unsigned long eventsWritten; // This is how many events this process has
                                // written to the currently open file. It is NOT
                                // necessarily the number of lines in the file
+
+  unsigned long totalStoreBytesLimit;
 
  private:
   // disallow copy, assignment, and empty construction
