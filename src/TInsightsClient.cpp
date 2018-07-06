@@ -119,7 +119,7 @@ void TInsightsClient::flush() {
     << "Content-Type: application/x-thrift" << CRLF << "Content-Length: " << len << CRLF
     << "Content-Encoding: gzip" << CRLF
     << "Accept: application/x-thrift" << CRLF << "User-Agent: Insights/" << VERSION << CRLF
-    << "Authorization: Passphrase passphrase=" << nodeIdPassphrase << CRLF << CRLF;
+    << "Authorization: Bearer " << nodeIdPassphrase << CRLF << CRLF;
   string header = h.str();
 
   if (header.size() > (std::numeric_limits<uint32_t>::max)())

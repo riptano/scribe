@@ -1090,7 +1090,7 @@ bool FileStore::empty(struct tm* now) {
 
     int suffix = getFileSuffix(filename, base_filename, isCompressed);
     if (-1 != suffix) {
-      boost::shared_ptr<FileInterface> file = FileInterface::createFileInterface(fsType, filename);
+      boost::shared_ptr<FileInterface> file = FileInterface::createFileInterface(fsType, filePath + "/" + filename);
       if (file->fileSize()) {
         return false;
       }
