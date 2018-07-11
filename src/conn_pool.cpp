@@ -168,15 +168,14 @@ scribeConn::scribeConn(const string& hostname, unsigned long port, int timeout_)
 }
 
 scribeConn::scribeConn(const string& hostname, unsigned long port, const std::string& path_, const std::string &ca_cert,
- const std::string& node_id, std::string& node_id_passphrase, int timeout_)
+ std::string& bearer_token, int timeout_)
   : refCount(1),
   serviceBased(false),
   remoteHost(hostname),
   remotePort(port),
   caCert(ca_cert),
   httpPath(path_),
-  nodeId(node_id),
-  nodeIdPassphrase(node_id_passphrase),
+  bearerToken(bearer_token),
   timeout(timeout_) {
   pthread_mutex_init(&mutex, NULL);
 
@@ -260,7 +259,7 @@ bool scribeConn::open() {
 
     if (!httpPath.empty()) {
         LOG_OPER("Using HTTP Client");
-        httpTransport = shared_ptr<TInsightsClient>(new TInsightsClient(socket, remoteHost, httpPath, nodeId, nodeIdPassphrase));
+        httpTransport = shared_ptr<TInsightsClient>(new TInsightsClient(socket, remoteHost, httpPath, bearerToken));
         protocol = shared_ptr<TProtocol>(new TJSONProtocol(httpTransport));
 
     } else {

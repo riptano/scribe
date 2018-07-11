@@ -38,12 +38,11 @@ static const int GZIP_ENCODING = 16;
 
 TInsightsClient::TInsightsClient(boost::shared_ptr<TTransport> transport,
                          std::string host, std::string path,
-                         std::string nodeId, std::string nodeIdPassphrase)
+                         std::string bearerToken)
   : THttpTransport(transport),
     host_(host),
     path_(path),
-    nodeId(nodeId),
-    nodeIdPassphrase(nodeIdPassphrase),
+    bearerToken(bearerToken),
     tBufSize_(0),
     httpStatusCode(0),
     tBuf_(NULL) {
@@ -116,10 +115,10 @@ void TInsightsClient::flush() {
   // Construct the HTTP header
   std::ostringstream h;
   h << "POST " << path_ << " HTTP/1.1" << CRLF << "Host: " << host_ << CRLF
-    << "Content-Type: application/x-thrift" << CRLF << "Content-Length: " << len << CRLF
+    << "Content-Type: application/vnd.insights.insightsStream+json" << CRLF << "Content-Length: " << len << CRLF
     << "Content-Encoding: gzip" << CRLF
     << "Accept: application/x-thrift" << CRLF << "User-Agent: Insights/" << VERSION << CRLF
-    << "Authorization: Bearer " << nodeIdPassphrase << CRLF << CRLF;
+    << "Authorization: Bearer " << bearerToken << CRLF << CRLF;
   string header = h.str();
 
   if (header.size() > (std::numeric_limits<uint32_t>::max)())

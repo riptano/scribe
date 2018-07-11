@@ -2191,8 +2191,7 @@ void HttpStore::configure(pStoreConf configuration, pStoreConf parent) {
   }
 
   configuration->getString("http_path", httpPath);
-  configuration->getString("node_id", nodeId);
-  configuration->getString("node_id_passphrase", nodeIdPassphrase);
+  configuration->getString("bearer_token", bearerToken);
 }
 
 void HttpStore::periodicCheck() {
@@ -2227,8 +2226,11 @@ bool HttpStore::open() {
     return (true);
   }
 
+  if (remoteHost.empty())
+    return false;
+
   unpooledConn = boost::shared_ptr<scribeConn>(new scribeConn(remoteHost,
-          remotePort, httpPath, caCert, nodeId, nodeIdPassphrase, static_cast<int>(timeout)));
+          remotePort, httpPath, caCert, bearerToken, static_cast<int>(timeout)));
   opened = unpooledConn->open();
   if (!opened) {
     unpooledConn.reset();
@@ -2271,8 +2273,7 @@ boost::shared_ptr<Store> HttpStore::copy(const std::string &category) {
   store->remotePort = remotePort;
   store->serviceName = serviceName;
   store->httpPath = httpPath;
-  store->nodeId = nodeId;
-  store->nodeIdPassphrase = nodeIdPassphrase;
+  store->bearerToken = bearerToken;
   store->caCert = caCert;
 
   return copied;

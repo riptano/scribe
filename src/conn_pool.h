@@ -34,7 +34,7 @@ class scribeConn {
  public:
   scribeConn(const std::string& host, unsigned long port, int timeout);
   scribeConn(const std::string& host, unsigned long port, const std::string& path, const std::string& ca_cert,
-             const std::string& nodeId, std::string& nodeIdPassphrase, int timeout);
+             std::string& bearerToken, int timeout);
   scribeConn(const std::string &service, const server_vector_t &servers, int timeout);
   virtual ~scribeConn();
 
@@ -72,8 +72,7 @@ class scribeConn {
   unsigned long remotePort;
   std::string caCert;
   std::string httpPath;
-  std::string nodeId;
-  std::string nodeIdPassphrase;
+  std::string bearerToken;
   int timeout; // connection, send, and recv timeout
   pthread_mutex_t mutex;
 };

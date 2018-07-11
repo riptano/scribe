@@ -471,8 +471,7 @@ class HttpStore : public Store {
   bool ssl;
   std::string caCert;
   std::string httpPath;
-  std::string nodeId;
-  std::string nodeIdPassphrase;
+  std::string bearerToken;
   long int timeout;
   std::string remoteHost;
   unsigned long remotePort; // long because it works with config code

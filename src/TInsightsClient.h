@@ -28,7 +28,7 @@ namespace transport {
 
 class TInsightsClient : public THttpTransport {
 public:
-  TInsightsClient(boost::shared_ptr<TTransport> transport, std::string host, std::string path, std::string nodeId, std::string nodeIdPassphrase);
+  TInsightsClient(boost::shared_ptr<TTransport> transport, std::string host, std::string path, std::string bearerToken);
 
   virtual ~TInsightsClient();
 
@@ -40,8 +40,7 @@ public:
 protected:
   std::string host_;
   std::string path_;
-  std::string nodeId;
-  std::string nodeIdPassphrase;
+  std::string bearerToken;
 
   int httpStatusCode;
 
