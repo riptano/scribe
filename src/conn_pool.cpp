@@ -180,6 +180,7 @@ scribeConn::scribeConn(const string& hostname, unsigned long port, const std::st
   pthread_mutex_init(&mutex, NULL);
 
   if (!caCert.empty()) {
+    signal(SIGPIPE, SIG_IGN);
     sslFactory = shared_ptr<TSSLSocketFactory>(new TSSLSocketFactory());
     sslFactory->ciphers("ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
     sslFactory->loadTrustedCertificates(caCert.c_str());
