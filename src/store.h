@@ -222,6 +222,7 @@ class FileStore : public FileStoreBase {
  protected:
   // Implement FileStoreBase virtual function
   bool openInternal(bool incrementFilename, struct tm* current_time);
+  void renameAll(struct tm* current_time);
   bool writeMessages(boost::shared_ptr<logentry_vector_t> messages,
                      boost::shared_ptr<FileInterface> write_file =
                      boost::shared_ptr<FileInterface>());
@@ -261,7 +262,6 @@ class ThriftFileStore : public FileStoreBase {
  protected:
   // Implement FileStoreBase virtual function
   bool openInternal(bool incrementFilename, struct tm* current_time);
-
   boost::shared_ptr<apache::thrift::transport::TTransport> thriftFileTransport;
 
   unsigned long flushFrequencyMs;

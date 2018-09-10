@@ -41,6 +41,7 @@ class FileInterface {
   virtual void close() = 0;
   virtual void compress() = 0;
   virtual bool write(const std::string& data) = 0;
+  virtual void rename(const std::string& new_path) = 0;
   virtual void flush() = 0;
   virtual unsigned long fileSize() = 0;
   virtual long readNext(std::string& _return) = 0;
@@ -70,6 +71,7 @@ class StdFile : public FileInterface {
   void close();
   void compress();
   bool write(const std::string& data);
+  void rename(const std::string& new_path);
   void flush();
   unsigned long fileSize();
   long readNext(std::string& _return);

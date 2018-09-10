@@ -286,11 +286,11 @@ bool scribeConn::open() {
       remoteHost = socket->getPeerHost();
     }
   } catch (const TTransportException& ttx) {
-    LOG_OPER("failed to open connection to remote scribe server %s thrift error <%s>",
+    LOG_WARN("failed to open connection to remote server %s thrift error <%s>",
              connectionString().c_str(), ttx.what());
     return false;
   } catch (const std::exception& stx) {
-    LOG_OPER("failed to open connection to remote scribe server %s std error <%s>",
+    LOG_WARN("failed to open connection to remote server %s std error <%s>",
              connectionString().c_str(), stx.what());
     return false;
   }
@@ -343,12 +343,12 @@ scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
       return (CONN_OK);
     }
     fatal = false;
-    LOG_OPER("Failed to send <%d> messages, remote scribe server %s "
+    LOG_WARN("Failed to send <%d> messages, remote scribe server %s "
         "returned error code <%d>", size, connectionString().c_str(),
         (int) result);
   } catch (const TTransportException& ttx) {
     fatal = true;
-    LOG_OPER("Failed to send <%d> messages to remote scribe server %s "
+    LOG_WARN("Failed to send <%d> messages to remote scribe server %s "
         "error <%s>", size, connectionString().c_str(), ttx.what());
   } catch (...) {
     fatal = true;
@@ -357,10 +357,10 @@ scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
     try {
        if(expPtr) std::rethrow_exception(expPtr);
     } catch(const std::exception& e) {
-       LOG_OPER("ERR %s",e.what());
+       LOG_WARN("ERR %s", e.what());
     }
 
-    LOG_OPER("Unknown exception sending <%d> messages to remote scribe "
+    LOG_WARN("Unknown exception sending <%d> messages to remote scribe "
         "server %s", size, connectionString().c_str());
   }
   /*
@@ -424,12 +424,12 @@ int scribeConn::sendInsights(boost::shared_ptr<logentry_vector_t> messages) {
       return (CONN_OK);
     }
     fatal = false;
-    LOG_OPER("Failed to send <%d> messages, remote scribe server %s "
+    LOG_WARN("Failed to send <%d> messages, remote scribe server %s "
         "returned error code <%d>", size, connectionString().c_str(),
         (int) httpStatus);
   } catch (const TTransportException& ttx) {
     fatal = true;
-    LOG_OPER("Failed to send <%d> messages to remote scribe server %s "
+    LOG_WARN("Failed to send <%d> messages to remote scribe server %s "
         "error <%s>", size, connectionString().c_str(), ttx.what());
   } catch (...) {
     fatal = true;
@@ -438,10 +438,10 @@ int scribeConn::sendInsights(boost::shared_ptr<logentry_vector_t> messages) {
     try {
        if(expPtr) std::rethrow_exception(expPtr);
     } catch(const std::exception& e) {
-       LOG_OPER("ERR %s",e.what());
+       LOG_WARN("ERR %s",e.what());
     }
 
-    LOG_OPER("Unknown exception sending <%d> messages to remote scribe "
+    LOG_WARN("Unknown exception sending <%d> messages to remote scribe "
         "server %s", size, connectionString().c_str());
   }
   /*

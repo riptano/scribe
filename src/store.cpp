@@ -697,6 +697,21 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
   try {
     int suffix = findNewestFile(makeBaseFilename(current_time));
 
+    // This is the case where we've hit max int
+    if (suffix == INT_MIN || suffix == INT_MAX) {
+
+        if (writeFile) {
+           writeFile->close();
+           writeFile->compress();
+           writeFile = NULL;
+        }
+
+        // Rename all the files back so they start at 0 suffix
+        renameAll(current_time);
+
+        suffix = findNewestFile(makeBaseFilename(current_time));
+    }
+
     if (incrementFilename) {
       ++suffix;
     }
@@ -730,9 +745,9 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
     if (writeFile) {
       if (writeMeta) {
         writeFile->write(meta_logfile_prefix + file);
-	    if (addNewlines) {
+	      if (addNewlines) {
 	        writeFile->write("\n");
-	    }
+	      }
       }
       writeFile->close();
       writeFile->compress();
@@ -740,7 +755,7 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
 
     writeFile = FileInterface::createFileInterface(fsType, file, isBufferFile);
     if (!writeFile) {
-      LOG_OPER("[%s] Failed to create file <%s> of type <%s> for writing",
+      LOG_WARN("[%s] Failed to create file <%s> of type <%s> for writing",
                categoryHandled.c_str(), file.c_str(), fsType.c_str());
       setStatus("file open error");
       return false;
@@ -754,7 +769,7 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
     }
 
     if (!success) {
-      LOG_OPER("[%s] Failed to create directory for file <%s>",
+      LOG_WARN("[%s] Failed to create directory for file <%s>",
                categoryHandled.c_str(), file.c_str());
       setStatus("File open error");
       return false;
@@ -764,7 +779,7 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
 
 
     if (!success) {
-      LOG_OPER("[%s] Failed to open file <%s> for writing",
+      LOG_WARN("[%s] Failed to open file <%s> for writing",
               categoryHandled.c_str(),
               file.c_str());
       setStatus("File open error");
@@ -791,9 +806,9 @@ bool FileStore::openInternal(bool incrementFilename, struct tm* current_time) {
     }
 
   } catch(const std::exception& e) {
-    LOG_OPER("[%s] Failed to create/open file of type <%s> for writing",
+    LOG_WARN("[%s] Failed to create/open file of type <%s> for writing",
              categoryHandled.c_str(), fsType.c_str());
-    LOG_OPER("Exception: %s", e.what());
+    LOG_WARN("Exception: %s", e.what());
     setStatus("file create/open error");
 
     return false;
@@ -921,7 +936,7 @@ bool FileStore::writeMessages(boost::shared_ptr<logentry_vector_t> messages,
       if ((current_size_buffered > max_write_size && maxSize != 0) ||
           messages->end() == iter + 1 ) {
         if (!write_file->write(write_buffer)) {
-          LOG_OPER("[%s] File store failed to write (%lu) messages to file",
+          LOG_WARN("[%s] File store failed to write (%lu) messages to file",
                    categoryHandled.c_str(), messages->size());
           setStatus("File write error");
           success = false;
@@ -942,7 +957,7 @@ bool FileStore::writeMessages(boost::shared_ptr<logentry_vector_t> messages,
       }
     }
   } catch (const std::exception& e) {
-    LOG_OPER("[%s] File store failed to write. Exception: %s",
+    LOG_WARN("[%s] File store failed to write. Exception: %s",
              categoryHandled.c_str(), e.what());
     success = false;
   }
@@ -1032,7 +1047,7 @@ bool FileStore::readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages
                                               filename, isBufferFile);
 
   if (!infile->openRead()) {
-    LOG_OPER("[%s] Failed to open file <%s> for reading",
+    LOG_WARN("[%s] Failed to open file <%s> for reading",
             categoryHandled.c_str(), filename.c_str());
     return false;
   }
@@ -1097,7 +1112,31 @@ bool FileStore::empty(struct tm* now) {
     } // else it doesn't match the filename for this store
   }
   return true;
+}
 
+void FileStore::renameAll(struct tm* now) {
+  std::vector<std::string> files = FileInterface::list(filePath, fsType);
+
+  int moveSuffix = 0;
+
+  std::string base_filename = makeBaseFilename(now);
+  for (std::vector<std::string>::iterator iter = files.begin();
+       iter != files.end();
+       ++iter) {
+
+    string filename = *iter;
+    bool isCompressed = boost::algorithm::ends_with(filename, ".gz");
+
+    int suffix = getFileSuffix(filename, base_filename, isCompressed);
+    if (-1 != suffix) {
+      string new_filename = makeFullFilename(moveSuffix++, now);
+      if (isCompressed)
+        new_filename += ".gz";
+
+      boost::shared_ptr<FileInterface> file = FileInterface::createFileInterface(fsType, filePath + "/" + filename);
+      file->rename(new_filename);
+    }
+  }
 }
 
 
