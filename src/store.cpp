@@ -436,7 +436,7 @@ string FileStoreBase::makeFullFilename(int suffix, struct tm* creation_time,
     filename << filePath << '/';
   }
   filename << makeBaseFilename(creation_time);
-  filename << '_' << setw(5) << setfill('0') << suffix;
+  filename << '_' << suffix;
 
   return filename.str();
 }
