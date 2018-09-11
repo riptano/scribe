@@ -734,7 +734,7 @@ void new_scribe2(char* config_)
 void delete_scribe()
 {
     real()->shutdown();
-    delete scribe_instance;
+    delete real();
     scribe_instance = NULL;
 }
 
