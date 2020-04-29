@@ -118,7 +118,7 @@ void TInsightsClient::flush() {
     << "Content-Type: application/vnd.insights.insightsStream+json" << CRLF << "Content-Length: " << len << CRLF
     << "Content-Encoding: gzip" << CRLF
     << "Accept: application/x-thrift" << CRLF << "User-Agent: Insights/" << VERSION << CRLF
-    << "X-Insights-Namespace: dse.insights" << CRLF 
+    << "X-Insights-Namespace: mcac.insights" << CRLF 
     << "Authorization: Bearer " << bearerToken << CRLF << CRLF;
   string header = h.str();
 
